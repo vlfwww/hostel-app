@@ -1,0 +1,260 @@
+РЕЧЬ ДЛЯ ЗАЩИТЫ ЛАБОРАТОРНОЙ РАБОТЫ № 7–8
+Тема: ASP.NET Core + EF Core — REST API с авторизацией
+Вариант 11: Гостиница (номера и бронирования, роли «админ» и «гость»)
+Студент: Концевая В. Д., гр. 314301
+────────────────────────────────────────────────────────
+
+Это речь только для лабораторной № 7–8.
+Речь для № 5–6 лежит в файле «Речь_для_защиты.txt» и к этой защите не относится.
+
+
+1. КАК ЗАПУСТИТЬ (показать на защите)
+
+Открыть терминал (PowerShell) и выполнить:
+
+  cd "D:\ucheba\4 курс\РИС\ЛР 5-6 (лр4)\HotelApi"
+  dotnet run --launch-profile http
+
+Секрет подписи JWT на этом компьютере уже лежит в user-secrets,
+в репозитории его нет. Если запуск напишет, что Jwt:Key не задан:
+
+  dotnet user-secrets set "Jwt:Key" "<секрет, не короче 32 символов>" --project HotelApi
+
+При первом запуске EF Core применит миграцию и создаст HotelApi\hotel.db,
+затем заполнит номера, гостей и три учётные записи.
+
+Открыть в браузере:
+
+  http://localhost:5080/swagger
+
+Учётные записи для Swagger (кнопка Authorize, вставить token из login):
+
+  admin   / Admin123!   роль Admin
+  ivanov  / Guest123!   роль Guest, карточка «Иванов Алексей»
+  petrova / Guest123!   роль Guest, карточка «Петрова Мария»
+
+Сидоров Павел есть в базе как гость, но без логина:
+администратор может забронировать номер на него.
+
+
+2. КРАТКОЕ ВСТУПЛЕНИЕ (40–50 сек)
+
+Здравствуйте. В лабораторной работе № 7–8 я сделала веб-API гостиницы.
+Предметная область та же, что в предыдущей работе: номера, гости
+и бронирования. Консольное приложение HotelApp я не заменяла —
+рядом добавлен проект HotelApi.
+
+Снаружи это REST API: Swagger, JSON, коды ответов.
+Внутри — хост ASP.NET Core на Kestrel, конвейер middleware,
+внедрение зависимостей и слои endpoint → сервис → репозиторий → EF Core.
+Вход по JWT, роли «админ» и «гость».
+
+
+3. ЧТО И ГДЕ РЕАЛИЗОВАНО (по файлам)
+
+Проект: папка HotelApi. Решение: Hotel.sln.
+
+1) Program.cs — CreateBuilder, Kestrel, DI, конфигурация, JWT,
+   CORS, Swagger и порядок middleware.
+
+2) Endpoints\ — Minimal API:
+   AuthEndpoints   /api/auth/register, /login, /me
+   RoomEndpoints   /api/rooms
+   BookingEndpoints /api/bookings
+
+3) Controllers\GuestsController.cs — MVC:
+   [ApiController], [Route], [Authorize(Roles = Admin)], ModelState.
+
+4) Services\ — правила: цена брони, пересечение дат, кто что может.
+
+5) Repositories\ — запросы EF Core: фильтр, сортировка, пагинация.
+
+6) Data\HotelDbContext.cs — SQLite, связи, уникальные индексы.
+   Data\DbInitializer.cs — Migrate() и тестовые данные.
+   Migrations\ — InitialCreate.
+
+7) Auth\ — PBKDF2-хеш пароля и выпуск JWT.
+   Секрет читается из user-secrets или переменной Jwt__Key.
+
+8) Dtos\ и Mapping\Mappers.cs — вход и выход, ручной маппинг.
+   Common\ValidationFilter.cs — DataAnnotations → ProblemDetails.
+
+
+4. МОДЕЛЬ И ПРАВА
+
+• Room  1——* Booking     (Restrict: номер с бронями не удалить)
+• Guest 1——* Booking     (Restrict)
+• Guest 1——0..1 User     (учётная запись необязательна)
+
+Роли:
+• без токена — только просмотр номеров, вход и регистрация;
+• Guest — свои брони, создание брони на себя, отмена своей активной;
+• Admin — номера, все брони, удаление брони, список гостей.
+
+Политики в Program.cs: AdminOnly и GuestOrAdmin.
+
+
+5. ЧТО ПОКАЗАТЬ В КОДЕ
+
+• Порядок middleware: Program.cs, блок app.Use...
+  Сначала журнал и обработчик ошибок, потом CORS,
+  затем Authentication и только после него Authorization.
+
+• Времена жизни DI в том же файле:
+  Transient — IClock;
+  Singleton — хеш пароля и выпуск токена;
+  Scoped — DbContext, репозитории и сервисы (один на HTTP-запрос).
+
+• Секрет JWT не в appsettings.json.
+  Проверка длины ключа — в начале Program.cs.
+  Параметры Jwt и Pagination — IOptions и ValidateOnStart.
+
+• Фильтр и страница: Repositories\RoomRepository.cs, метод SearchAsync.
+  Сортировка цены через (double), потому что SQLite не сортирует decimal.
+
+• Выпуск токена: Auth\JwtTokenService.cs — имя, роль, guest_id.
+
+• Чужие брони: Services\BookingService.cs —
+  гость видит только свой GuestId.
+
+• MVC и ModelState: Controllers\GuestsController.cs.
+
+
+6. СЦЕНАРИЙ ДЕМОНСТРАЦИИ (Swagger, говорить по ходу)
+
+─── 1. Открыть /swagger ───
+«Документация собирается из Minimal API и контроллера.
+Замок стоит только на методах, где нужна роль.
+Вход, регистрация и список номеров открыты.»
+
+─── 2. GET /api/rooms ───
+Параметры: type = Standard, minPrice = 80, maxPrice = 100, sort = price.
+«Это фильтрация, сортировка и пагинация. Токен не нужен:
+каталог номеров публичный. В ответе totalCount и номер страницы.»
+
+─── 3. POST /api/rooms без Authorize ───
+«Нет заголовка Authorization — 401 и ProblemDetails:
+нужно передать Bearer-токен.»
+
+─── 4. POST /api/auth/login, пользователь admin ───
+Тело:
+  { "userName": "admin", "password": "Admin123!" }
+«Ответ 200: token, срок и роль Admin.
+Токен копирую в Authorize. Подпись проверяет Kestrel по секрету
+из user-secrets, сам секрет в ответе не приходит.»
+
+─── 5. POST /api/rooms с пустыми полями, уже под admin ───
+  { "number": "", "type": "", "pricePerNight": 0, "capacity": 0 }
+«DataAnnotations не прошли. Фильтр вернул 400 ValidationProblem:
+отдельная ошибка на номер, тип, цену и вместимость.»
+
+─── 6. Выйти из Authorize, войти как ivanov / Guest123! ───
+Снова POST /api/rooms с нормальным телом.
+«Токен есть, но роль Guest. Политика AdminOnly даёт 403.»
+
+─── 7. POST /api/bookings от ivanov ───
+  { "roomId": 2, "checkIn": "2027-03-10", "checkOut": "2027-03-13" }
+«Гость не передаёт guestId: он берётся из токена.
+Три ночи по 85 — в ответе totalPrice 255, статус 201 и Location.»
+
+Если номер 102 на эти даты уже занят показом, взять другой свободный
+(сейчас свободны 102 и 301, если базу не меняли) или другие будущие даты.
+
+─── 8. GET /api/bookings от ivanov ───
+«В списке только брони Иванова. Даже если подставить чужой guestId,
+сервис его отбросит.»
+
+─── 9. GET /api/bookings/2 от ivanov ───
+«Это бронь Петровой. Сервис отвечает 403: чужие брони не читаются.»
+
+─── 10. GET /api/guests от ivanov, затем снова войти как admin ───
+«Раздел гостей — MVC-контроллер с [Authorize(Roles = Admin)].
+Гость получает 403, администратор — список.
+Так на одной защите видны и Minimal API, и контроллер.»
+
+
+7. ОТВЕТЫ НА ТИПИЧНЫЕ ВОПРОСЫ
+
+Чем Minimal API отличается от контроллера?
+Minimal API — методы MapGet/MapPost в Endpoints.
+Контроллер — класс с [ApiController] и [Route], действие возвращает
+ActionResult. Гости сделаны контроллером, остальное — Minimal API.
+Оба попадают в один Swagger.
+
+Зачем порядок middleware?
+Аутентификация должна отработать раньше авторизации, иначе роли ещё
+не прочитаны. CORS стоит до них, чтобы браузерный preflight не требовал
+токен. Обработчик исключений снаружи, чтобы поймать ошибку любого
+следующего компонента.
+
+Scoped, Singleton и Transient?
+Scoped — новый объект на запрос. Так живёт DbContext: его нельзя
+делить между запросами.
+Singleton — один объект на всё приложение: хеш пароля и выпуск JWT,
+у них нет данных запроса.
+Transient — новый объект на каждую выдачу. Так зарегистрированы часы.
+
+Где секрет JWT?
+Не в appsettings и не в git. User-secrets в среде Development
+или переменная окружения Jwt__Key. Если ключа нет или он короче
+32 символов, приложение не стартует.
+
+Чем 401 отличается от 403?
+401 — токена нет или он не принят.
+403 — токен принят, но роли не хватает. Гость, который создаёт номер,
+получает именно 403.
+
+Как устроена пагинация?
+Параметры page и pageSize. Размер страницы не больше MaxPageSize
+из конфигурации (50). Ответ содержит items, page, pageSize,
+totalCount и totalPages.
+
+Почему сортировка цены через double?
+SQLite в EF Core не выполняет ORDER BY по decimal.
+В запрос уходит приведение к double. Имена сортировки — белый список,
+в SQL строка пользователя не подставляется.
+
+Что такое ProblemDetails?
+Единый JSON об ошибке: status, title, detail, instance.
+Ошибки полей — в errors. Так отвечают и фильтр валидации, и исключения
+сервиса, и пустые 401/403/404.
+
+
+8. ЗАКЛЮЧЕНИЕ (15–20 сек)
+
+«Сделан REST API гостиницы на ASP.NET Core и EF Core: номера
+и бронирования, роли админа и гостя, JWT, проверка входных данных
+и Swagger. Секрет подписи в репозиторий не входит.
+Готова ответить на вопросы.»
+
+
+9. ШПАРГАЛКА ПО ЗАПРОСАМ
+
+Без токена
+  GET  /api/rooms?type=Standard&sort=price&page=1&pageSize=10
+  POST /api/auth/login
+  POST /api/auth/register
+
+Гость (ivanov или petrova)
+  GET  /api/auth/me
+  GET  /api/bookings
+  POST /api/bookings          тело: roomId, checkIn, checkOut
+  PUT  /api/bookings/{id}/status   тело: { "status": "Cancelled" }
+  POST /api/rooms             → 403
+  GET  /api/guests            → 403
+
+Админ
+  POST/PUT/DELETE /api/rooms
+  GET  /api/bookings          видит все, можно guestId и status
+  POST /api/bookings          обязательно guestId
+  DELETE /api/bookings/{id}
+  GET/POST /api/guests
+
+
+10. ЕСЛИ СПРОСЯТ, КАК ПОДНЯТЬ БАЗУ ВРУЧНУЮ
+
+  cd HotelApi
+  dotnet ef migrations list
+  dotnet ef database update
+
+Обычно это не нужно: при dotnet run миграция применяется сама.
