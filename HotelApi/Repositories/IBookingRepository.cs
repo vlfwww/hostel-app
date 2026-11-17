@@ -29,6 +29,8 @@ public interface IBookingRepository
 
     Task<bool> AnyForRoomAsync(int roomId, CancellationToken cancellationToken);
 
+    Task<bool> AnyForGuestAsync(int guestId, CancellationToken cancellationToken);
+
     Task AddAsync(Booking booking, CancellationToken cancellationToken);
 
     void Remove(Booking booking);

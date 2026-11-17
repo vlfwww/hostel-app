@@ -1,0 +1,136 @@
+@page "/bookings"
+@attribute [Authorize]
+@implements IDisposable
+@inject HotelApiClient Api
+@inject AuthSession Session
+@inject UiMessenger Messenger
+
+<PageTitle>Брони — Aurelia</PageTitle>
+
+<section class="page">
+    <PageIntro Kicker="Журнал" Title="@(Session.IsAdmin ? "Все брони" : "Мои брони")" Lead="@(Session.IsAdmin ? "Здесь все проживания дома: можно сменить статус или убрать запись." : "Здесь только ваши проживания. Активную бронь можно отменить.")" />
+
+    <div class="filters">
+        <label class="field">
+            <span>Статус</span>
+            <select @bind="status">
+                <option value="">Все</option>
+                <option value="Active">Активные</option>
+                <option value="Cancelled">Отменённые</option>
+                <option value="Completed">Завершённые</option>
+            </select>
+        </label>
+        <button class="solid" @onclick="Reload">Обновить</button>
+    </div>
+
+    @if (!Session.Restored)
+    {
+        <p class="muted">Проверяем сессию…</p>
+    }
+    else if (error is not null)
+    {
+        <p class="alert" role="alert">@error</p>
+    }
+    else if (page is null)
+    {
+        <p class="muted">Собираем брони…</p>
+    }
+    else if (page.Items.Count == 0)
+    {
+        <p class="empty">Таких броней нет. Выберите номер в каталоге и укажите даты.</p>
+        <p class="hero-actions"><a class="solid" href="/rooms">К номерам</a></p>
+    }
+    else
+    {
+        <div class="booking-list">
+            @foreach (var item in page.Items)
+            {
+                <BookingRow Item="item"
+                            IsAdmin="Session.IsAdmin"
+                            StatusChanged="ChangeStatus"
+                            DeleteRequested="Delete" />
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private string status = string.Empty;
+    private Paged<BookingModel>? page;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Session.Changed += OnSession;
+        if (Session.Restored)
+        {
+            await Load();
+        }
+    }
+
+    private async void OnSession()
+    {
+        await InvokeAsync(async () =>
+        {
+            await Load();
+            StateHasChanged();
+        });
+    }
+
+    private async Task Reload() => await Load();
+
+    private async Task Load()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            return;
+        }
+
+        error = null;
+        try
+        {
+            page = await Api.GetBookingsAsync(new BookingFilter
+            {
+                Status = string.IsNullOrWhiteSpace(status) ? null : status,
+                Sort = "-checkIn",
+                Page = 1,
+                PageSize = 20
+            });
+        }
+        catch (Exception exception)
+        {
+            page = null;
+            error = exception.Message;
+        }
+    }
+
+    private async Task ChangeStatus(StatusChange change)
+    {
+        try
+        {
+            await Api.UpdateBookingStatusAsync(change.Id, change.Status);
+            Messenger.Success("Статус обновлён.");
+            await Load();
+        }
+        catch (Exception exception)
+        {
+            Messenger.Error(exception.Message);
+        }
+    }
+
+    private async Task Delete(int id)
+    {
+        try
+        {
+            await Api.DeleteBookingAsync(id);
+            Messenger.Success("Бронь удалена.");
+            await Load();
+        }
+        catch (Exception exception)
+        {
+            Messenger.Error(exception.Message);
+        }
+    }
+
+    public void Dispose() => Session.Changed -= OnSession;
+}

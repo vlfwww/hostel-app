@@ -87,6 +87,9 @@ public sealed class BookingRepository : IBookingRepository
     public Task<bool> AnyForRoomAsync(int roomId, CancellationToken cancellationToken) =>
         _db.Bookings.AnyAsync(booking => booking.RoomId == roomId, cancellationToken);
 
+    public Task<bool> AnyForGuestAsync(int guestId, CancellationToken cancellationToken) =>
+        _db.Bookings.AnyAsync(booking => booking.GuestId == guestId, cancellationToken);
+
     public async Task AddAsync(Booking booking, CancellationToken cancellationToken) =>
         await _db.Bookings.AddAsync(booking, cancellationToken);
 

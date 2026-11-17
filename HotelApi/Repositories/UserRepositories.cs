@@ -19,14 +19,27 @@ public sealed class GuestRepository : IGuestRepository
     public Task<Guest?> GetByIdAsync(int id, CancellationToken cancellationToken) =>
         _db.Guests.AsNoTracking().FirstOrDefaultAsync(guest => guest.Id == id, cancellationToken);
 
+    public Task<Guest?> GetTrackedByIdAsync(int id, CancellationToken cancellationToken) =>
+        _db.Guests.FirstOrDefaultAsync(guest => guest.Id == id, cancellationToken);
+
     public Task<bool> PassportExistsAsync(string passportNumber, CancellationToken cancellationToken)
     {
         var passport = passportNumber.Trim().ToLower();
         return _db.Guests.AnyAsync(guest => guest.PassportNumber.ToLower() == passport, cancellationToken);
     }
 
+    public Task<bool> PassportTakenByAnotherAsync(string passportNumber, int guestId, CancellationToken cancellationToken)
+    {
+        var passport = passportNumber.Trim().ToLower();
+        return _db.Guests.AnyAsync(
+            guest => guest.Id != guestId && guest.PassportNumber.ToLower() == passport,
+            cancellationToken);
+    }
+
     public async Task AddAsync(Guest guest, CancellationToken cancellationToken) =>
         await _db.Guests.AddAsync(guest, cancellationToken);
+
+    public void Remove(Guest guest) => _db.Guests.Remove(guest);
 }
 
 public sealed class UserRepository : IUserRepository

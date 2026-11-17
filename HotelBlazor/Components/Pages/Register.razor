@@ -1,0 +1,82 @@
+@page "/register"
+@inject HotelApiClient Api
+@inject AuthSession Session
+@inject HotelAuthStateProvider Auth
+@inject NavigationManager Nav
+@inject UiMessenger Messenger
+
+<PageTitle>Регистрация — Aurelia</PageTitle>
+
+<section class="page narrow">
+    <PageIntro Kicker="Новый гость" Title="Кабинет за минуту" Lead="Имя, паспорт и пароль. После регистрации сразу откроется ваш кабинет." />
+
+    <EditForm Model="draft" OnValidSubmit="Submit" class="form-card" novalidate>
+        <DataAnnotationsValidator />
+        <label class="field">
+            <span>Имя для входа</span>
+            <InputText @bind-Value="draft.UserName" />
+            <ValidationMessage For="() => draft.UserName" />
+        </label>
+        <label class="field">
+            <span>Пароль</span>
+            <InputText @bind-Value="draft.Password" type="password" />
+            <ValidationMessage For="() => draft.Password" />
+        </label>
+        <label class="field">
+            <span>ФИО</span>
+            <InputText @bind-Value="draft.FullName" />
+            <ValidationMessage For="() => draft.FullName" />
+        </label>
+        <label class="field">
+            <span>Телефон</span>
+            <InputText @bind-Value="draft.Phone" />
+            <ValidationMessage For="() => draft.Phone" />
+        </label>
+        <label class="field">
+            <span>Почта</span>
+            <InputText @bind-Value="draft.Email" />
+            <ValidationMessage For="() => draft.Email" />
+        </label>
+        <label class="field">
+            <span>Паспорт</span>
+            <InputText @bind-Value="draft.PassportNumber" />
+            <ValidationMessage For="() => draft.PassportNumber" />
+        </label>
+        @if (error is not null)
+        {
+            <p class="alert" role="alert">@error</p>
+        }
+        <button class="solid" type="submit" disabled="@busy">Зарегистрироваться</button>
+        <p class="muted">Уже есть вход? <a href="/login">Открыть сессию</a></p>
+    </EditForm>
+</section>
+
+@code {
+    private readonly RegisterDraft draft = new();
+    private bool busy;
+    private string? error;
+
+    private async Task Submit()
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            var login = await Api.RegisterAsync(draft);
+            Session.Hold(login);
+            var profile = await Api.MeAsync();
+            await Session.CommitAsync(profile);
+            Auth.Notify();
+            Messenger.Success("Кабинет открыт. Добро пожаловать.");
+            Nav.NavigateTo("/");
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

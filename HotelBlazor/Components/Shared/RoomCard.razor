@@ -1,0 +1,25 @@
+<article class="room-card @HotelText.Tone(Room.Type)">
+    <a class="card-hit" href="@($"/rooms/{Room.Id}")" @onclick="Open">
+        <div class="card-top">
+            <span class="card-type">@Room.Type</span>
+            <span class="card-number">@Room.Number</span>
+        </div>
+        <div class="card-body">
+            <div class="price-row">
+                <strong>@HotelText.Money(Room.PricePerNight)</strong>
+                <span class="muted">за ночь</span>
+            </div>
+            <span class="muted">@Room.Capacity мест · @(Room.IsAvailable ? "свободен к брони" : "сейчас не сдаётся")</span>
+        </div>
+    </a>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public RoomModel Room { get; set; } = default!;
+
+    [Parameter] public EventCallback<RoomModel> Selected { get; set; }
+
+    [CascadingParameter] public Viewer? Viewer { get; set; }
+
+    private Task Open() => Selected.InvokeAsync(Room);
+}

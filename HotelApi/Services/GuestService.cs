@@ -14,17 +14,27 @@ public interface IGuestService
     Task<GuestResponse> GetAsync(int id, CancellationToken cancellationToken);
 
     Task<GuestResponse> CreateAsync(CreateGuestRequest request, CancellationToken cancellationToken);
+
+    Task<GuestResponse> UpdateAsync(int id, CreateGuestRequest request, CancellationToken cancellationToken);
+
+    Task DeleteAsync(int id, CancellationToken cancellationToken);
 }
 
 public sealed class GuestService : IGuestService
 {
     private readonly IGuestRepository _guests;
+    private readonly IBookingRepository _bookings;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<GuestService> _logger;
 
-    public GuestService(IGuestRepository guests, IUnitOfWork unitOfWork, ILogger<GuestService> logger)
+    public GuestService(
+        IGuestRepository guests,
+        IBookingRepository bookings,
+        IUnitOfWork unitOfWork,
+        ILogger<GuestService> logger)
     {
         _guests = guests;
+        _bookings = bookings;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
@@ -62,6 +72,41 @@ public sealed class GuestService : IGuestService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
         _logger.LogInformation("Администратор добавил гостя {GuestId} ({FullName})", guest.Id, guest.FullName);
         return GuestMapper.ToResponse(guest);
+    }
+
+    public async Task<GuestResponse> UpdateAsync(int id, CreateGuestRequest request, CancellationToken cancellationToken)
+    {
+        var guest = await _guests.GetTrackedByIdAsync(id, cancellationToken)
+            ?? throw ApiException.NotFound($"Гость {id} не найден.");
+
+        var passport = request.PassportNumber.Trim();
+        if (await _guests.PassportTakenByAnotherAsync(passport, id, cancellationToken))
+        {
+            throw ApiException.Conflict($"Гость с паспортом {passport} уже есть.");
+        }
+
+        guest.FullName = request.FullName.Trim();
+        guest.Phone = Clean(request.Phone);
+        guest.Email = Clean(request.Email);
+        guest.PassportNumber = passport;
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Администратор изменил гостя {GuestId}", guest.Id);
+        return GuestMapper.ToResponse(guest);
+    }
+
+    public async Task DeleteAsync(int id, CancellationToken cancellationToken)
+    {
+        var guest = await _guests.GetTrackedByIdAsync(id, cancellationToken)
+            ?? throw ApiException.NotFound($"Гость {id} не найден.");
+
+        if (await _bookings.AnyForGuestAsync(id, cancellationToken))
+        {
+            throw ApiException.Conflict("Нельзя удалить гостя: по нему есть бронирования.");
+        }
+
+        _guests.Remove(guest);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Администратор удалил гостя {GuestId}", id);
     }
 
     private static string? Clean(string? value) =>

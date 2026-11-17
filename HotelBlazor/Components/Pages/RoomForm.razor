@@ -1,0 +1,118 @@
+@page "/rooms/new"
+@page "/rooms/{Id:int}/edit"
+@attribute [Authorize(Roles = "Admin")]
+@inject HotelApiClient Api
+@inject NavigationManager Nav
+@inject UiMessenger Messenger
+
+<PageTitle>@(IsNew ? "Новый номер" : "Изменить номер") — Aurelia</PageTitle>
+
+<section class="page narrow">
+    <PageIntro Kicker="Стойка" Title="@(IsNew ? "Новый номер" : "Карточка номера")" Lead="Номер, тип и цена обязательны. Пустую карточку дом не примет." />
+
+    @if (loading)
+    {
+        <p class="muted">Загружаем карточку…</p>
+    }
+    else
+    {
+        <EditForm Model="draft" OnValidSubmit="Save" class="form-card" novalidate>
+            <DataAnnotationsValidator />
+            <label class="field">
+                <span>Номер комнаты</span>
+                <InputText @bind-Value="draft.Number" />
+                <ValidationMessage For="() => draft.Number" />
+            </label>
+            <label class="field">
+                <span>Тип</span>
+                <InputText @bind-Value="draft.Type" />
+                <ValidationMessage For="() => draft.Type" />
+            </label>
+            <label class="field">
+                <span>Цена за ночь, BYN</span>
+                <InputNumber @bind-Value="draft.PricePerNight" ParsingErrorMessage="Укажите цену числом." />
+                <ValidationMessage For="() => draft.PricePerNight" />
+            </label>
+            <label class="field">
+                <span>Вместимость</span>
+                <InputNumber @bind-Value="draft.Capacity" ParsingErrorMessage="Укажите вместимость целым числом." />
+                <ValidationMessage For="() => draft.Capacity" />
+            </label>
+            <label class="checkline">
+                <InputCheckbox @bind-Value="draft.IsAvailable" />
+                Номер сдаётся
+            </label>
+            @if (error is not null)
+            {
+                <p class="alert" role="alert">@error</p>
+            }
+            <div class="row-actions">
+                <button class="solid" type="submit" disabled="@busy">@(IsNew ? "Создать" : "Сохранить")</button>
+                <a class="ghost" href="/rooms">К каталогу</a>
+            </div>
+        </EditForm>
+    }
+</section>
+
+@code {
+    private readonly RoomDraft draft = new();
+    private bool loading;
+    private bool busy;
+    private string? error;
+    private int loadedId;
+
+    [Parameter] public int Id { get; set; }
+
+    private bool IsNew => Id == 0;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsNew || loadedId == Id)
+        {
+            return;
+        }
+
+        loadedId = Id;
+        loading = true;
+        error = null;
+        try
+        {
+            var room = await Api.GetRoomAsync(Id);
+            draft.Number = room.Number;
+            draft.Type = room.Type;
+            draft.PricePerNight = room.PricePerNight;
+            draft.Capacity = room.Capacity;
+            draft.IsAvailable = room.IsAvailable;
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task Save()
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            var saved = IsNew
+                ? await Api.CreateRoomAsync(draft)
+                : await Api.UpdateRoomAsync(Id, draft);
+            Messenger.Success(IsNew ? $"Номер {saved.Number} создан." : $"Номер {saved.Number} обновлён.");
+            Nav.NavigateTo($"/rooms/{saved.Id}");
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

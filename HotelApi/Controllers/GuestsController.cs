@@ -37,18 +37,52 @@ public class GuestsController : ControllerBase
         [FromBody] CreateGuestRequest request,
         CancellationToken cancellationToken)
     {
-        if (!ModelState.IsValid)
+        var invalid = InvalidModel();
+        if (invalid is not null)
         {
-            var details = new ValidationProblemDetails(ModelState)
-            {
-                Title = "Ошибка валидации",
-                Instance = HttpContext.Request.Path
-            };
-            details.Extensions["traceId"] = HttpContext.TraceIdentifier;
-            return ValidationProblem(details);
+            return invalid;
         }
 
         var created = await _guests.CreateAsync(request, cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+    }
+
+    [HttpPut("{id:int}")]
+    public async Task<ActionResult<GuestResponse>> Update(
+        int id,
+        [FromBody] CreateGuestRequest request,
+        CancellationToken cancellationToken)
+    {
+        var invalid = InvalidModel();
+        if (invalid is not null)
+        {
+            return invalid;
+        }
+
+        var updated = await _guests.UpdateAsync(id, request, cancellationToken);
+        return Ok(updated);
+    }
+
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
+    {
+        await _guests.DeleteAsync(id, cancellationToken);
+        return NoContent();
+    }
+
+    private ActionResult? InvalidModel()
+    {
+        if (ModelState.IsValid)
+        {
+            return null;
+        }
+
+        var details = new ValidationProblemDetails(ModelState)
+        {
+            Title = "Ошибка валидации",
+            Instance = HttpContext.Request.Path
+        };
+        details.Extensions["traceId"] = HttpContext.TraceIdentifier;
+        return ValidationProblem(details);
     }
 }

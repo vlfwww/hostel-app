@@ -1,0 +1,107 @@
+﻿@inherits LayoutComponentBase
+@implements IDisposable
+@inject AuthSession Session
+@inject HotelAuthStateProvider Auth
+@inject UiMessenger Messenger
+@inject NavigationManager Nav
+
+<div class="shell">
+    <header class="top">
+        <a class="brand" href="/">
+            <span class="mark">A</span>
+            <span>
+                <strong>Aurelia</strong>
+                <small>городская гостиница</small>
+            </span>
+        </a>
+        <nav>
+            <NavLink href="/" Match="NavLinkMatch.All">Дом</NavLink>
+            <NavLink href="/rooms">Номера</NavLink>
+            <AuthorizeView>
+                <Authorized>
+                    <NavLink href="/bookings">Брони</NavLink>
+                    <AuthorizeView Roles="Admin" Context="admin">
+                        <Authorized>
+                            <NavLink href="/guests">Гости</NavLink>
+                        </Authorized>
+                    </AuthorizeView>
+                </Authorized>
+            </AuthorizeView>
+        </nav>
+        <div class="account">
+            <AuthorizeView>
+                <Authorized>
+                    <a class="who" href="/account">
+                        @context.User.Identity?.Name
+                        <small>@HotelText.Role(context.User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value)</small>
+                    </a>
+                    <button class="text-btn" @onclick="Logout">Выйти</button>
+                </Authorized>
+                <NotAuthorized>
+                    <a class="ghost" href="/login">Войти</a>
+                    <a class="solid" href="/register">Регистрация</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+    </header>
+
+    @if (Messenger.Message is not null)
+    {
+        <div class="banner @(Messenger.IsError ? "error" : null)" role="status">
+            <span>@Messenger.Message</span>
+            <button class="text-btn" @onclick="Messenger.Clear">Скрыть</button>
+        </div>
+    }
+
+    <main>
+        <CascadingValue Value="Viewer">
+            @Body
+        </CascadingValue>
+    </main>
+
+    <footer class="site-footer">
+        <span>Aurelia · городская гостиница</span>
+        <span>Тихий дом на короткие и долгие даты</span>
+    </footer>
+</div>
+
+<div id="blazor-error-ui">
+    Соединение с интерфейсом прервалось.
+    <a href="" class="reload">Обновить</a>
+    <a class="dismiss">✕</a>
+</div>
+
+@code {
+    private Viewer Viewer => HotelText.AsViewer(Session);
+
+    protected override void OnInitialized() => Messenger.Changed += OnMessenger;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        if (await Session.RestoreAsync())
+        {
+            Auth.Notify();
+        }
+        else if (Session.Restored)
+        {
+            Auth.Notify();
+        }
+    }
+
+    private async Task Logout()
+    {
+        await Session.ClearAsync();
+        Auth.Notify();
+        Messenger.Success("Вы вышли из кабинета.");
+        Nav.NavigateTo("/");
+    }
+
+    private void OnMessenger() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Messenger.Changed -= OnMessenger;
+}

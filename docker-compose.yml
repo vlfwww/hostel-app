@@ -1,0 +1,34 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: HotelApi/Dockerfile
+    ports:
+      - "5080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      Jwt__Key: aurelia-lab9-demo-signing-key-32b
+      Jwt__Issuer: HotelApi
+      Jwt__Audience: HotelApiClient
+      Jwt__ExpireMinutes: "120"
+      ConnectionStrings__HotelDb: Data Source=/app/data/hotel.db
+      Cors__Origins__0: http://localhost:5280
+    volumes:
+      - hotel-data:/app/data
+
+  web:
+    build:
+      context: .
+      dockerfile: HotelBlazor/Dockerfile
+    ports:
+      - "5280:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      Api__BaseUrl: http://api:8080
+    depends_on:
+      - api
+
+volumes:
+  hotel-data:

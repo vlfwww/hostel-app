@@ -1,0 +1,102 @@
+﻿@page "/"
+@inject HotelApiClient Api
+
+<PageTitle>Aurelia — гостиница</PageTitle>
+
+<section class="hero">
+    <div class="hero-copy">
+        <p class="kicker">Aurelia · дом на короткое и долгое</p>
+        <h1>Номер находится раньше, чем остывает чай.</h1>
+        <p class="lead">Номера можно смотреть сразу. Чтобы забронировать даты и видеть свои проживания, войдите в кабинет.</p>
+        <AuthorizeView>
+            <Authorized>
+                <div class="hero-actions">
+                    <a class="solid" href="/rooms">Смотреть номера</a>
+                    <a class="ghost" href="/bookings">К броням</a>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <div class="hero-actions">
+                    <a class="solid" href="/rooms">Смотреть номера</a>
+                    <a class="ghost" href="/login">Войти</a>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
+    </div>
+    <aside class="hero-plate">
+        <p>Сейчас в доме</p>
+        <strong>@(spotlight?.Number ?? "—")</strong>
+        <span>@(spotlight is null ? "Каталог сейчас не открылся. Обновите страницу." : $"{spotlight.Type} · {HotelText.Money(spotlight.PricePerNight)} за ночь")</span>
+    </aside>
+</section>
+
+<section class="page">
+    <div class="section-head">
+        <div>
+            <p class="kicker">01 — каталог</p>
+            <h2>С чего начинают смотреть</h2>
+        </div>
+        <a class="ghost" href="/rooms">Все номера</a>
+    </div>
+
+    @if (error is not null)
+    {
+        <p class="alert" role="alert">@error</p>
+    }
+    else if (rooms is null)
+    {
+        <p class="muted">Открываем каталог…</p>
+    }
+    else
+    {
+        <div class="room-grid">
+            @foreach (var room in rooms)
+            {
+                <RoomCard Room="room" Selected="Remember" />
+            }
+        </div>
+    }
+
+    <div class="section-head">
+        <div>
+            <p class="kicker">02 — дом</p>
+            <h2>Как здесь останавливаются</h2>
+        </div>
+    </div>
+    <div class="notes">
+        <article>
+            <h3>Номер</h3>
+            <p>Standard, Deluxe и Suite. Цена указана за ночь, вместимость — на карточке.</p>
+        </article>
+        <article>
+            <h3>Даты</h3>
+            <p>Заезд и выезд выбираете сами. Сумма видна до подтверждения.</p>
+        </article>
+        <article>
+            <h3>Стойка</h3>
+            <p>Сотрудник стойки ведёт номера, карточки гостей и все проживания дома.</p>
+        </article>
+    </div>
+</section>
+
+@code {
+    private List<RoomModel>? rooms;
+    private RoomModel? spotlight;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var page = await Api.GetRoomsAsync(new RoomFilter { Sort = "-price", Page = 1, PageSize = 3 });
+            rooms = page.Items;
+            spotlight = page.Items.FirstOrDefault();
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+    }
+
+    private void Remember(RoomModel room) => spotlight = room;
+}

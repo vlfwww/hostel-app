@@ -1,0 +1,44 @@
+@inject AuthSession Session
+@inject NavigationManager Nav
+@implements IDisposable
+
+<section class="page narrow">
+    @if (!Session.Restored)
+    {
+        <p class="kicker">Кабинет</p>
+        <h1>Открываем вход</h1>
+        <p class="lead">Если вы уже входили в этой вкладке, страница откроется сама.</p>
+    }
+    else if (User.Identity?.IsAuthenticated == true)
+    {
+        <p class="kicker">Стойка</p>
+        <h1>Этот раздел для сотрудников</h1>
+        <p class="lead">Вы вошли как @User.Identity.Name. Гостевой кабинет сюда не пускает.</p>
+        <div class="hero-actions">
+            <a class="solid" href="/bookings">К броням</a>
+            <a class="ghost" href="/rooms">К номерам</a>
+        </div>
+    }
+    else
+    {
+        <p class="kicker">Вход</p>
+        <h1>Сначала войдите</h1>
+        <p class="lead">Брони и карточки гостей открываются из кабинета. Номера можно смотреть и без него.</p>
+        <div class="hero-actions">
+            <a class="solid" href="@LoginHref">На страницу входа</a>
+            <a class="ghost" href="/register">Регистрация</a>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public System.Security.Claims.ClaimsPrincipal User { get; set; } = default!;
+
+    private string LoginHref => "/login?returnUrl=" + Uri.EscapeDataString("/" + Nav.ToBaseRelativePath(Nav.Uri));
+
+    protected override void OnInitialized() => Session.Changed += Refresh;
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Session.Changed -= Refresh;
+}

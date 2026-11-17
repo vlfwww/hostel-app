@@ -1,0 +1,81 @@
+@page "/login"
+@inject HotelApiClient Api
+@inject AuthSession Session
+@inject HotelAuthStateProvider Auth
+@inject NavigationManager Nav
+@inject UiMessenger Messenger
+
+<PageTitle>Вход — Aurelia</PageTitle>
+
+<section class="page narrow">
+    <PageIntro Kicker="Вход" Title="Кабинет Aurelia" Lead="Войдите, чтобы видеть свои брони и оформлять новые." />
+
+    <EditForm Model="draft" OnValidSubmit="Submit" class="form-card" novalidate>
+        <DataAnnotationsValidator />
+        <h2>Войти</h2>
+        <label class="field">
+            <span>Имя</span>
+            <InputText @bind-Value="draft.UserName" autocomplete="username" />
+            <ValidationMessage For="() => draft.UserName" />
+        </label>
+        <label class="field">
+            <span>Пароль</span>
+            <InputText @bind-Value="draft.Password" type="password" autocomplete="current-password" />
+            <ValidationMessage For="() => draft.Password" />
+        </label>
+        @if (error is not null)
+        {
+            <p class="alert" role="alert">@error</p>
+        }
+        <button class="solid" type="submit" disabled="@busy">Войти</button>
+        <p class="muted">Впервые у нас? <a href="/register">Завести карточку</a></p>
+    </EditForm>
+</section>
+
+@code {
+    private readonly LoginDraft draft = new();
+    private bool busy;
+    private string? error;
+
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+
+    private async Task Submit()
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            var login = await Api.LoginAsync(draft);
+            Session.Hold(login);
+            var profile = await Api.MeAsync();
+            await Session.CommitAsync(profile);
+            Auth.Notify();
+            Messenger.Success($"Добро пожаловать, {profile.UserName}.");
+            Nav.NavigateTo(NextUrl());
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private string NextUrl()
+    {
+        if (string.IsNullOrWhiteSpace(ReturnUrl))
+        {
+            return "/";
+        }
+
+        var url = ReturnUrl.StartsWith('/') ? ReturnUrl : "/" + ReturnUrl;
+        if (url.StartsWith("//", StringComparison.Ordinal) || url.Contains('\\'))
+        {
+            return "/";
+        }
+
+        return url;
+    }
+}

@@ -242,3 +242,5 @@ static string BuildSqliteConnectionString(string rawConnection, string contentRo
 
     return sqlite.ToString();
 }
+
+public partial class Program;

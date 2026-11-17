@@ -8,9 +8,15 @@ public interface IGuestRepository
 
     Task<Guest?> GetByIdAsync(int id, CancellationToken cancellationToken);
 
+    Task<Guest?> GetTrackedByIdAsync(int id, CancellationToken cancellationToken);
+
     Task<bool> PassportExistsAsync(string passportNumber, CancellationToken cancellationToken);
 
+    Task<bool> PassportTakenByAnotherAsync(string passportNumber, int guestId, CancellationToken cancellationToken);
+
     Task AddAsync(Guest guest, CancellationToken cancellationToken);
+
+    void Remove(Guest guest);
 }
 
 public interface IUserRepository

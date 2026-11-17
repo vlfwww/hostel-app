@@ -40,10 +40,10 @@ public class UpsertRoomRequest
     public string Number { get; set; } = string.Empty;
 
     [Required(ErrorMessage = "Укажите тип номера.")]
-    [MaxLength(50)]
+    [MaxLength(50, ErrorMessage = "Тип номера — не длиннее 50 символов.")]
     public string Type { get; set; } = string.Empty;
 
-    [Range(0.01, 1_000_000, ErrorMessage = "Цена за ночь должна быть больше нуля.")]
+    [Range(0.01, 1_000_000, ErrorMessage = "Цена за ночь — от 0,01 до 1 000 000 BYN.")]
     public decimal PricePerNight { get; set; }
 
     [Range(1, 10, ErrorMessage = "Вместимость — от 1 до 10 гостей.")]

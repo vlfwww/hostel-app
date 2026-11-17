@@ -1,0 +1,61 @@
+@page "/account"
+@attribute [Authorize]
+@inject HotelApiClient Api
+@inject AuthSession Session
+
+<PageTitle>Кабинет — Aurelia</PageTitle>
+
+<section class="page">
+    <PageIntro Kicker="Кабинет" Title="@(Session.UserName ?? "Гость")" Lead="Здесь ваше имя, статус в доме и срок текущего входа." />
+
+    @if (error is not null)
+    {
+        <p class="alert" role="alert">@error</p>
+    }
+
+    <div class="account-grid">
+        <article>
+            <span>Статус</span>
+            <strong>@HotelText.Role(profile?.Role ?? Session.Role)</strong>
+        </article>
+        <article>
+            <span>Гость</span>
+            <strong>@(GuestLabel)</strong>
+        </article>
+        <article>
+            <span>Вход до</span>
+            <strong>@(Session.ExpiresAt is DateTime expires ? HotelText.When(expires) : "—")</strong>
+        </article>
+    </div>
+
+    <div class="hero-actions">
+        <a class="solid" href="/bookings">К броням</a>
+        <a class="ghost" href="/rooms">К номерам</a>
+    </div>
+</section>
+
+@code {
+    private UserProfile? profile;
+    private string? error;
+
+    private string GuestLabel => (profile?.GuestId ?? Session.GuestId) is int
+        ? "карточка гостя"
+        : "сотрудник стойки";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            return;
+        }
+
+        try
+        {
+            profile = await Api.MeAsync();
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+    }
+}

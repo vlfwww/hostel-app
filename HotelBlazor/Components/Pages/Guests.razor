@@ -1,0 +1,187 @@
+@page "/guests"
+@attribute [Authorize(Roles = "Admin")]
+@inject HotelApiClient Api
+@inject UiMessenger Messenger
+
+<PageTitle>Гости — Aurelia</PageTitle>
+
+<section class="page">
+    <PageIntro Kicker="Стойка" Title="Гости" Lead="Карточку можно завести и для гостя без отдельного входа. Если по нему есть проживания, карточку не удалить." />
+
+    <div class="guest-layout">
+        <div>
+            @if (error is not null && guests.Count == 0)
+            {
+                <p class="alert" role="alert">@error</p>
+            }
+            else if (!loaded)
+            {
+                <p class="muted">Открываем список…</p>
+            }
+            else
+            {
+                <div class="guest-list">
+                    <button class="guest-item @(editingId is null ? "active" : null)" @onclick="NewGuest">
+                        <strong>Новый гость</strong>
+                        <small>Карточка со стойки</small>
+                    </button>
+                    @foreach (var guest in guests)
+                    {
+                        <button class="guest-item @(editingId == guest.Id ? "active" : null)" @onclick="() => Edit(guest)">
+                            <strong>@guest.FullName</strong>
+                            <small>@guest.PassportNumber · @(string.IsNullOrWhiteSpace(guest.Phone) ? "без телефона" : guest.Phone)</small>
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
+        <EditForm @key="formGeneration" Model="draft" OnValidSubmit="Save" class="form-card" novalidate>
+            <DataAnnotationsValidator />
+            <h2>@(editingId is null ? "Новый гость" : "Карточка")</h2>
+            <label class="field">
+                <span>ФИО</span>
+                <InputText @bind-Value="draft.FullName" />
+                <ValidationMessage For="() => draft.FullName" />
+            </label>
+            <label class="field">
+                <span>Телефон</span>
+                <InputText @bind-Value="draft.Phone" />
+                <ValidationMessage For="() => draft.Phone" />
+            </label>
+            <label class="field">
+                <span>Почта</span>
+                <InputText @bind-Value="draft.Email" />
+                <ValidationMessage For="() => draft.Email" />
+            </label>
+            <label class="field">
+                <span>Паспорт</span>
+                <InputText @bind-Value="draft.PassportNumber" />
+                <ValidationMessage For="() => draft.PassportNumber" />
+            </label>
+            @if (formError is not null)
+            {
+                <p class="alert" role="alert">@formError</p>
+            }
+            <div class="row-actions">
+                <button class="solid" type="submit" disabled="@busy">@(editingId is null ? "Добавить" : "Сохранить")</button>
+                @if (editingId is int id)
+                {
+                    if (confirmDelete)
+                    {
+                        <button class="danger" type="button" @onclick="() => Delete(id)" disabled="@busy">Да, удалить</button>
+                        <button class="quiet" type="button" @onclick="() => confirmDelete = false">Оставить</button>
+                    }
+                    else
+                    {
+                        <button class="quiet" type="button" @onclick="() => confirmDelete = true">Удалить</button>
+                    }
+                }
+            </div>
+        </EditForm>
+    </div>
+</section>
+
+@code {
+    private readonly GuestDraft draft = new();
+    private int formGeneration;
+    private List<GuestModel> guests = [];
+    private int? editingId;
+    private bool loaded;
+    private bool busy;
+    private bool confirmDelete;
+    private string? error;
+    private string? formError;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        error = null;
+        try
+        {
+            guests = await Api.GetGuestsAsync();
+            loaded = true;
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+        }
+    }
+
+    private void NewGuest()
+    {
+        editingId = null;
+        confirmDelete = false;
+        formError = null;
+        draft.FullName = string.Empty;
+        draft.Phone = null;
+        draft.Email = null;
+        draft.PassportNumber = string.Empty;
+        formGeneration++;
+    }
+
+    private void Edit(GuestModel guest)
+    {
+        editingId = guest.Id;
+        confirmDelete = false;
+        formError = null;
+        draft.FullName = guest.FullName;
+        draft.Phone = guest.Phone;
+        draft.Email = guest.Email;
+        draft.PassportNumber = guest.PassportNumber;
+        formGeneration++;
+    }
+
+    private async Task Save()
+    {
+        busy = true;
+        formError = null;
+        try
+        {
+            if (editingId is int id)
+            {
+                await Api.UpdateGuestAsync(id, draft);
+                Messenger.Success("Карточка гостя обновлена.");
+            }
+            else
+            {
+                await Api.CreateGuestAsync(draft);
+                Messenger.Success("Гость добавлен.");
+                NewGuest();
+            }
+
+            await Load();
+        }
+        catch (Exception exception)
+        {
+            formError = exception.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task Delete(int id)
+    {
+        busy = true;
+        formError = null;
+        try
+        {
+            await Api.DeleteGuestAsync(id);
+            Messenger.Success("Карточка гостя удалена.");
+            NewGuest();
+            await Load();
+        }
+        catch (Exception exception)
+        {
+            formError = exception.Message;
+            confirmDelete = false;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

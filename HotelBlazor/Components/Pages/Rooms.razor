@@ -1,0 +1,132 @@
+@page "/rooms"
+@inject HotelApiClient Api
+
+<PageTitle>Номера — Aurelia</PageTitle>
+
+<section class="page">
+    <PageIntro Kicker="Каталог" Title="Номера" Lead="Отберите по типу и цене или посмотрите дом целиком." />
+
+    <EditForm Model="filter" OnValidSubmit="Search" class="filters" novalidate>
+        <DataAnnotationsValidator />
+        <label class="field">
+            <span>Тип</span>
+            <InputText @bind-Value="filter.Type" placeholder="Standard, Deluxe, Suite" />
+            <ValidationMessage For="() => filter.Type" />
+        </label>
+        <label class="field">
+            <span>Цена от, BYN</span>
+            <InputNumber @bind-Value="filter.MinPrice" ParsingErrorMessage="Цена «от» должна быть числом." />
+            <ValidationMessage For="() => filter.MinPrice" />
+        </label>
+        <label class="field">
+            <span>Цена до, BYN</span>
+            <InputNumber @bind-Value="filter.MaxPrice" ParsingErrorMessage="Цена «до» должна быть числом." />
+            <ValidationMessage For="() => filter.MaxPrice" />
+        </label>
+        <label class="field">
+            <span>Сдача</span>
+            <InputSelect @bind-Value="filter.Available">
+                <option value="">Все</option>
+                <option value="true">Сдаётся</option>
+                <option value="false">Не сдаётся</option>
+            </InputSelect>
+            <ValidationMessage For="() => filter.Available" />
+        </label>
+        <label class="field">
+            <span>Порядок</span>
+            <InputSelect @bind-Value="filter.Sort">
+                <option value="number">По номеру</option>
+                <option value="-number">Номер, обратно</option>
+                <option value="price">Сначала дешевле</option>
+                <option value="-price">Сначала дороже</option>
+            </InputSelect>
+            <ValidationMessage For="() => filter.Sort" />
+        </label>
+        <label class="field">
+            <span class="filter-spacer">Показать</span>
+            <button class="solid" type="submit">Показать</button>
+        </label>
+    </EditForm>
+
+    <AuthorizeView Roles="Admin">
+        <Authorized>
+            <p class="row-actions"><a class="ghost" href="/rooms/new">Новый номер</a></p>
+        </Authorized>
+    </AuthorizeView>
+
+    @if (error is not null)
+    {
+        <p class="alert" role="alert">@error</p>
+    }
+    else if (page is null)
+    {
+        <p class="muted">Собираем номера…</p>
+    }
+    else if (page.Items.Count == 0)
+    {
+        <p class="empty">По этому фильтру номеров нет. Сбросьте цену или тип.</p>
+    }
+    else
+    {
+        <div class="room-grid">
+            @foreach (var room in page.Items)
+            {
+                <RoomCard Room="room" />
+            }
+        </div>
+        <div class="pager">
+            <button class="ghost" disabled="@(page.Page <= 1)" @onclick="() => Go(page.Page - 1)">Назад</button>
+            <span class="muted">Страница @(page.Page) из @Math.Max(page.TotalPages, 1) · всего @(page.TotalCount)</span>
+            <button class="ghost" disabled="@(page.Page >= page.TotalPages)" @onclick="() => Go(page.Page + 1)">Дальше</button>
+        </div>
+    }
+</section>
+
+@code {
+    private readonly RoomSearchDraft filter = new();
+    private int currentPage = 1;
+    private Paged<RoomModel>? page;
+    private string? error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Search()
+    {
+        currentPage = 1;
+        await Load();
+    }
+
+    private async Task Go(int next)
+    {
+        currentPage = next;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        error = null;
+        try
+        {
+            page = await Api.GetRoomsAsync(new RoomFilter
+            {
+                Type = filter.Type,
+                MinPrice = filter.MinPrice,
+                MaxPrice = filter.MaxPrice,
+                Available = filter.Available switch
+                {
+                    "true" => true,
+                    "false" => false,
+                    _ => null
+                },
+                Sort = filter.Sort,
+                Page = currentPage,
+                PageSize = 6
+            });
+        }
+        catch (Exception exception)
+        {
+            page = null;
+            error = exception.Message;
+        }
+    }
+}

@@ -1,0 +1,99 @@
+<article class="booking">
+    <div>
+        <p class="kicker">Бронь @Item.Id</p>
+        <h3>№ @Item.RoomNumber · @Item.RoomType</h3>
+        <p class="muted">@Item.GuestName</p>
+    </div>
+    <div>
+        <p>@HotelText.Day(Item.CheckIn) — @HotelText.Day(Item.CheckOut)</p>
+        <p class="muted">@HotelText.Nights(Item.Nights) · @HotelText.Money(Item.TotalPrice)</p>
+        <span class="status @StatusClass">@HotelText.Status(Item.Status)</span>
+    </div>
+    <div class="row-actions">
+        @if (IsAdmin)
+        {
+            <label class="field">
+                <span>Статус</span>
+                <select @bind="status" class="@(statusError is null ? null : "invalid")">
+                    <option value="Active">Активна</option>
+                    <option value="Cancelled">Отменена</option>
+                    <option value="Completed">Завершена</option>
+                </select>
+                @if (statusError is not null)
+                {
+                    <span class="validation-message">@statusError</span>
+                }
+            </label>
+            <button class="ghost" @onclick="Save" disabled="@busy">Сохранить</button>
+            @if (pending)
+            {
+                <button class="danger" @onclick="Remove" disabled="@busy">Да, удалить</button>
+            }
+            else
+            {
+                <button class="quiet" @onclick="() => pending = true">Удалить</button>
+            }
+        }
+        else if (Item.Status == "Active")
+        {
+            <button class="danger" @onclick="Cancel" disabled="@busy">Отменить</button>
+        }
+    </div>
+</article>
+
+@code {
+    private string status = "Active";
+    private string? statusError;
+    private bool pending;
+    private bool busy;
+
+    [Parameter, EditorRequired] public BookingModel Item { get; set; } = default!;
+
+    [Parameter] public bool IsAdmin { get; set; }
+
+    [Parameter] public EventCallback<StatusChange> StatusChanged { get; set; }
+
+    [Parameter] public EventCallback<int> DeleteRequested { get; set; }
+
+    private string StatusClass => Item.Status switch
+    {
+        "Active" => "status-active",
+        "Cancelled" => "status-cancelled",
+        "Completed" => "status-completed",
+        _ => string.Empty
+    };
+
+    protected override void OnParametersSet()
+    {
+        status = Item.Status;
+        pending = false;
+    }
+
+    private async Task Save()
+    {
+        if (status is not ("Active" or "Cancelled" or "Completed"))
+        {
+            statusError = "Выберите статус: активна, отменена или завершена.";
+            return;
+        }
+
+        statusError = null;
+        busy = true;
+        await StatusChanged.InvokeAsync(new StatusChange(Item.Id, status));
+        busy = false;
+    }
+
+    private async Task Cancel()
+    {
+        busy = true;
+        await StatusChanged.InvokeAsync(new StatusChange(Item.Id, "Cancelled"));
+        busy = false;
+    }
+
+    private async Task Remove()
+    {
+        busy = true;
+        await DeleteRequested.InvokeAsync(Item.Id);
+        busy = false;
+    }
+}

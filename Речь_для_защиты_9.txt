@@ -1,0 +1,396 @@
+РЕЧЬ ДЛЯ ЗАЩИТЫ ЛАБОРАТОРНОЙ РАБОТЫ № 9
+Тема: Blazor, тестирование, Docker и CI/CD
+Вариант 11: Гостиница — Blazor-клиент с CRUD и тестами
+Студент: Концевая В. Д., гр. 314301
+────────────────────────────────────────────────────────
+
+Это речь только для лабораторной № 9.
+Речь для № 5–6 лежит в файле «Речь_для_защиты.txt».
+Речь для № 7–8 лежит в файле «Речь_для_защиты_7-8.txt».
+К этой защите они не относятся.
+
+
+1. КАК ЗАПУСТИТЬ (показать на защите)
+
+Нужны два процесса. API из лабораторной № 7–8 и новый клиент.
+
+Первый терминал:
+
+  cd "D:\ucheba\4 курс\РИС\ЛР 5-6 (лр4)\HotelApi"
+  dotnet run --launch-profile http
+
+Секрет JWT на этом компьютере уже лежит в user-secrets.
+Если запуск напишет, что Jwt:Key не задан:
+
+  dotnet user-secrets set "Jwt:Key" "<секрет, не короче 32 символов>" --project HotelApi
+
+API: http://localhost:5080/swagger
+
+Второй терминал:
+
+  cd "D:\ucheba\4 курс\РИС\ЛР 5-6 (лр4)\HotelBlazor"
+  dotnet run --launch-profile http
+
+Клиент: http://localhost:5280
+
+Учётные записи те же, что в API:
+
+  admin   / Admin123!   роль Admin
+  ivanov  / Guest123!   роль Guest, карточка «Иванов Алексей»
+  petrova / Guest123!   роль Guest, карточка «Петрова Мария»
+
+На странице входа три кнопки подставляют эти пары и сразу входят.
+Сидоров Павел есть в базе без логина: администратор бронирует номер на него.
+
+Тесты, без запуска сайта:
+
+  cd "D:\ucheba\4 курс\РИС\ЛР 5-6 (лр4)"
+  dotnet test HotelApi.Tests
+
+Docker, если установлен Docker Desktop:
+
+  docker compose up --build
+
+Тогда API на порту 5080, клиент на 5280.
+Ключ Jwt__Key для контейнера задан в docker-compose.yml,
+в appsettings.json его по-прежнему нет.
+
+
+2. КРАТКОЕ ВСТУПЛЕНИЕ (40–50 сек)
+
+Здравствуйте. В лабораторной работе № 9 я закрыла сквозной проект
+гостиницы: браузерный клиент ходит в REST API из прошлой работы,
+API пишет в SQLite.
+
+Клиент — Blazor Web App в режиме Interactive Server.
+Интерфейс называется Aurelia. Это не отдельная предметная область,
+а экран к тем же номерам, гостям и бронированиям.
+
+Рядом лежат тесты сервисного слоя и один интеграционный тест
+через WebApplicationFactory, multi-stage Dockerfile для API и клиента,
+docker-compose и workflow GitHub Actions: сборка, тесты и публикация.
+
+
+3. ПОЧЕМУ ИМЕННО ТАКАЯ МОДЕЛЬ BLAZOR
+
+В .NET 8 есть три модели.
+
+Blazor Server держит состояние на сервере, браузер получает diff
+по SignalR. Удобно, когда HttpClient должен звать API с сервера.
+
+Blazor WebAssembly качает .NET в браузер. HttpClient тогда идёт
+из браузера, и нужен CORS.
+
+Blazor Web App — шаблон .NET 8, который собирает обе модели.
+Я взяла Interactive Server на всё приложение и отключила prerender:
+так ProtectedSessionStorage с JWT не вызывается до появления
+JavaScript, и сессия после обновления страницы восстанавливается.
+
+Компоненты — файлы .razor. Разметка и блок @code в одном файле.
+Параметры передаются как [Parameter], общий признак зрителя —
+через [CascadingParameter]. Привязка — @bind и @bind-Value.
+Событие наверх — EventCallback<T>. Службы приходят через @inject.
+Страницы открываются по @page, переход делает NavigationManager.
+Формы — EditForm и DataAnnotationsValidator.
+
+
+4. ЧТО И ГДЕ РЕАЛИЗОВАНО
+
+Решение Hotel.sln. Новые проекты: HotelBlazor и HotelApi.Tests.
+HotelApp и HotelApi не заменены.
+
+Клиент, папка HotelBlazor.
+
+1) Program.cs — Razor Components, Interactive Server,
+   AddAuthorizationCore, своя AuthenticationStateProvider,
+   именованный HttpClient через IHttpClientFactory.
+   Базовый адрес читается из Api:BaseUrl, по умолчанию
+   http://localhost:5080.
+
+2) Components/Routes.razor — маршрутизатор и AuthorizeRouteView.
+   Чужой раздел показывает AuthGate: «войдите» или «недостаточно прав».
+
+3) Components/Layout/MainLayout.razor — шапка, роль, выход,
+   каскад Viewer для карточек.
+
+4) Components/Pages
+   Home.razor        главная и три номера
+   Rooms.razor       фильтр, сортировка, страницы
+   RoomDetails.razor карточка и форма брони
+   RoomForm.razor    создание и правка номера, только Admin
+   Bookings.razor    список, смена статуса, удаление
+   Guests.razor      список, создание, правка, удаление
+   Login.razor       вход по JWT
+   Register.razor    регистрация гостя
+   Account.razor     ответ GET /api/auth/me
+
+5) Components/Shared
+   RoomCard.razor    [Parameter], [CascadingParameter], EventCallback
+   BookingRow.razor  EventCallback<StatusChange>
+   PageIntro.razor   заголовок страницы
+   AuthGate.razor    экран до входа и при 403
+
+6) Services/HotelApiClient.cs — все вызовы API.
+   Токен подставляется в Authorization: Bearer.
+   Ошибка ProblemDetails превращается в текст на форме.
+
+7) Services/AuthSession.cs — JWT в памяти circuit
+   и копия в ProtectedSessionStorage.
+   Services/HotelAuthStateProvider.cs — ClaimsPrincipal для [Authorize].
+
+Тесты, папка HotelApi.Tests.
+
+BookingServiceTests — цена, прошлое, 60 ночей, чужой гость,
+обязательный guestId у админа, пересечение дат, чужой список.
+RoomAndGuestServiceTests — перевёрнутый диапазон цены,
+удаление номера с бронями, повтор паспорта, удаление гостя с бронями.
+ApiFlowTests — один интеграционный сценарий:
+каталог без токена, админ создаёт номер 777, гость на создание номера
+получает 403 и при этом читает свои брони.
+
+Docker
+
+HotelApi/Dockerfile и HotelBlazor/Dockerfile — multi-stage:
+sdk собирает, aspnet только запускает.
+docker-compose.yml поднимает api и web.
+.github/workflows/ci.yml — restore, build, test, dotnet publish,
+артефакт и docker compose build.
+
+
+5. ЧТО УМЕЕТ ЭКРАН
+
+Без токена: главная и каталог номеров.
+С ролью Guest: свои брони, создание брони на себя, отмена активной.
+С ролью Admin: номера целиком, все брони, статусы, удаление,
+гости — создание, правка, удаление.
+
+Гостей в API лабораторной № 7–8 можно было только читать и создавать.
+Для полного CRUD я добавила PUT и DELETE /api/guests.
+Удаление гостя или номера с бронями по-прежнему конфликт 409:
+связь Restrict не обходится.
+
+Цена на карточке номера — прикидка: ночи умножаются на цену.
+Итог в ответе считает BookingService. Клиент это правило не подменяет.
+
+
+6. ЧТО ПОКАЗАТЬ В КОДЕ
+
+• Модель хостинга: HotelBlazor/Program.cs
+  AddRazorComponents().AddInteractiveServerComponents()
+  и в App.razor InteractiveServerRenderMode(false) — без prerender.
+
+• Параметр и каскад: Components/Shared/RoomCard.razor
+  [Parameter] Room, [Parameter] EventCallback<RoomModel> Selected,
+  [CascadingParameter] Viewer.
+  Каскад отдаёт MainLayout.
+
+• Привязка: Rooms.razor, поля фильтра через @bind.
+  Login.razor, InputText @bind-Value.
+  RoomDetails.razor, InputDate @bind-Value и живой пересчёт суммы.
+
+• Форма: RoomForm.razor
+  EditForm, DataAnnotationsValidator, ValidationMessage.
+  Пустой номер не уходит на API.
+
+• HttpClient: HotelApiClient получает клиент из IHttpClientFactory
+  и перед запросом ставит Bearer, если AuthSession уже держит токен.
+
+• Жизненный цикл: RoomDetails.OnParametersSetAsync
+  перечитывает номер, если изменился Id.
+  MainLayout.OnAfterRenderAsync один раз достаёт токен из браузера.
+
+• Маршрут и роли: RoomForm.razor
+  две директивы @page и [Authorize(Roles = "Admin")].
+  Атрибут читает маршрутизатор. На HTTP-запросе токена ещё нет:
+  он в браузере, не в cookie. Поэтому AllowBlazorToDecide
+  пропускает запрос дальше, а экран «войдите» или «недостаточно прав»
+  рисует уже AuthorizeRouteView.
+
+• Тест бизнес-правила: BookingServiceTests,
+  метод Create_multiplies_room_price_by_nights.
+  Это [Theory] и [InlineData]: 1 ночь — 85, 3 — 255, 10 — 850.
+  Репозитории заменены Moq. В AddAsync перехватывается сущность,
+  которую собрал сервис, и проверяется TotalPrice.
+  Так проверяется сервис, а не заглушка.
+
+• Интеграционный тест: ApiFlowTests и HotelApiFactory.
+  WebApplicationFactory<Program> поднимает настоящий хост.
+  Для этого в конце Program.cs API объявлен public partial class Program.
+  Ключ JWT и файл SQLite тест подставляет сам, user-secrets не нужны.
+
+• Docker: HotelApi/Dockerfile, строки FROM sdk AS build
+  и FROM aspnet AS final. В финальный образ не входит компилятор.
+
+• CI: .github/workflows/ci.yml
+  триггер push и pull_request, job build-test-publish,
+  затем job docker.
+
+
+7. СЦЕНАРИЙ ДЕМОНСТРАЦИИ (говорить по ходу)
+
+Сначала оба dotnet run, затем браузер http://localhost:5280.
+
+─── 1. Главная без входа ───
+«Каталог публичный. Карточки пришли из GET /api/rooms.
+Справа номер с самой высокой ценой. Шапка ещё без роли.»
+
+─── 2. Номера, фильтр ───
+Тип Standard, порядок «сначала дешевле», кнопка «Показать».
+«Это @bind и query string: type, sort, page, pageSize.
+Токен не передаётся.»
+
+─── 3. Карточка номера 102 ───
+«Формы брони нет: нет JWT. Есть ссылка на вход.»
+
+─── 4. Войти как ivanov ───
+Кнопка «Иванов Алексей».
+«Login.razor шлёт POST /api/auth/login, кладёт токен в сессию,
+затем GET /api/auth/me. На экране токен не печатается.
+В шапке имя и роль „гость“.»
+
+─── 5. Снова номер 102, даты через две недели ───
+«Две недели, чтобы не пересечься с учебной бронью.
+Сумма на экране пересчитывается сразу.
+После подтверждения API возвращает ту же сумму и статус Active.
+Гость не передаёт guestId: сервис берёт его из токена.»
+
+Если номер занят, взять 301 или другие будущие даты.
+Сообщение конфликта показывается над кнопкой.
+
+─── 6. Страница «Брони» ───
+«В списке только брони Иванова.
+Кнопка „Отменить“ шлёт PUT .../status со статусом Cancelled.
+Удаления нет: это право администратора.»
+
+─── 7. Выйти и войти как admin ───
+«Роль в шапке меняется. Появляется пункт „Гости“
+и кнопка „Новый номер“.»
+
+─── 8. Новый номер ───
+Пустой номер и цена 0 — форма не отпускает.
+Затем нормальные поля, номер сохраняется.
+«PUT и DELETE номера тоже на карточке, под администратором.
+Номер с бронями удалить нельзя: API ответит 409.»
+
+─── 9. Гости ───
+Открыть Сидорова, поправить телефон, сохранить.
+Потом попытаться удалить Иванова.
+«У Иванова есть брони, сервис отвечает конфликтом.
+Новую карточку без логина добавить можно.»
+
+─── 10. Тесты в терминале ───
+  dotnet test HotelApi.Tests
+«Юнит-тесты не поднимают сайт: Moq стоит вместо репозиториев.
+Интеграционный тест поднимает API в памяти и проходит
+вход, создание номера и отказ гостю.»
+
+
+8. ОТВЕТЫ НА ТИПИЧНЫЕ ВОПРОСЫ
+
+Чем Blazor Server отличается от WebAssembly?
+Server выполняет компоненты на сервере, в браузер идёт разница
+по SignalR. WebAssembly исполняет их в браузере.
+У меня Interactive Server: HttpClient вызывает API с сервера,
+поэтому браузеру не нужен CORS. CORS в API всё равно расширен
+адресом клиента http://localhost:5280.
+
+Зачем IHttpClientFactory, если есть new HttpClient()?
+Фабрика переиспользует сокеты и задаёт базовый адрес в одном месте.
+HotelApiClient просит именованный клиент "hotel".
+Адрес в Docker другой: http://api:8080, его подставляет переменная
+Api__BaseUrl. Код клиента не меняется.
+
+Где лежит JWT?
+В памяти circuit и в ProtectedSessionStorage вкладки.
+Это не открытый localStorage: ASP.NET шифрует значение ключом
+приложения. На странице токен не показывается.
+После «Выйти» хранилище очищается.
+
+Чем 401 отличается от того, что видно на экране?
+401 и 403 приходят с API как ProblemDetails.
+Клиент читает detail или errors и пишет текст над формой.
+Если роли не хватает ещё до запроса, AuthorizeRouteView
+показывает «Недостаточно прав» и на API запрос не уходит.
+
+Почему тесты сервиса, а не только строк?
+Цена, пересечение дат, запрет чужой брони и запрет удалить
+занятый номер — это BookingService, RoomService и GuestService.
+Репозиторий заменён Moq, часы заменены FixedClock,
+чтобы «сегодня» не плавало. Утилиту форматирования денег я не
+считаю за эти тесты.
+
+Что делает интеграционный тест?
+WebApplicationFactory поднимает Program API.
+База — временный файл SQLite, ключ JWT задан в памяти,
+в репозиторий он не пишется. Сценарий: GET /api/rooms без токена,
+логин admin, POST номера, логин ivanov, POST номера ждёт 403.
+
+Почему Docker в два этапа?
+Первый этап — SDK, он компилирует. Второй — aspnet, в нём только
+опубликованные dll. Образ меньше, и компилятора в проде нет.
+Compose связывает web с api по имени службы, а не через localhost.
+
+Что делает GitHub Actions?
+По push и pull request в ветки lab-9, main и master:
+restore, build, test, publish API и Blazor в артефакт,
+затем docker compose build. Секрет подписи в workflow для тестов
+не нужен: фабрика теста задаёт ключ сама.
+Демо-ключ в docker-compose нужен только чтобы контейнер стартовал
+на защите. В appsettings.json ключа нет.
+
+Почему у гостя нельзя удалить бронь?
+Так решено в API: гость меняет статус только с Active на Cancelled
+и только у своей брони. Удаление закрыто политикой AdminOnly.
+Клиент прячет кнопку, но даже если её вызвать, API ответит 403.
+
+
+9. ЗАКЛЮЧЕНИЕ (15–20 сек)
+
+«Сквозной проект собран: Blazor-клиент Aurelia с полным CRUD
+номеров и броней, вход по JWT, тесты сервисов и один
+интеграционный тест, Docker и workflow GitHub Actions.
+Правила цены и доступа остались на API, клиент их показывает.
+Готова ответить на вопросы.»
+
+
+10. ШПАРГАЛКА ПО ЭКРАНАМ
+
+Без входа
+  /            главная
+  /rooms       каталог
+  /rooms/{id}  карточка без формы брони
+  /login       вход
+  /register    регистрация гостя
+
+Гость (ivanov или petrova)
+  /rooms/{id}  бронь на себя
+  /bookings    только свои, отмена активной
+  /account     имя, роль, срок сессии
+  /guests      недостаточно прав
+  /rooms/new   недостаточно прав
+
+Админ
+  /rooms/new и /rooms/{id}/edit
+  /bookings    все брони, статус, удаление
+  /guests      создать, изменить, удалить
+  бронь на карточке номера — выбрать гостя, в том числе Сидорова
+
+
+11. ЕСЛИ СПРОСЯТ ПРО DOCKER И ТЕСТЫ ОТДЕЛЬНО
+
+Тесты локально:
+
+  dotnet test HotelApi.Tests
+
+Образы:
+
+  docker compose build
+  docker compose up
+
+Остановить:
+
+  docker compose down
+
+База контейнера живёт в томе hotel-data.
+Ключ контейнера: aurelia-lab9-demo-signing-key-32b
+Он только для локального compose, не для публикации в интернет.

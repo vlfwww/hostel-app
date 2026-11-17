@@ -1,0 +1,259 @@
+@page "/rooms/{Id:int}"
+@inject HotelApiClient Api
+@inject AuthSession Session
+@inject NavigationManager Nav
+@inject UiMessenger Messenger
+@implements IDisposable
+
+<PageTitle>@(room is null ? "Номер" : $"Номер {room.Number}") — Aurelia</PageTitle>
+
+<section class="page">
+    @if (error is not null && room is null)
+    {
+        <p class="alert" role="alert">@error</p>
+        <a class="ghost" href="/rooms">К каталогу</a>
+    }
+    else if (room is null)
+    {
+        <p class="muted">Открываем карточку…</p>
+    }
+    else
+    {
+        <div class="detail">
+            <aside class="plate room-card @HotelText.Tone(room.Type)">
+                <div class="card-top">
+                    <span class="card-type">@room.Type</span>
+                    <span class="card-number">@room.Number</span>
+                </div>
+                <div class="card-body">
+                    <div class="price-row">
+                        <strong>@HotelText.Money(room.PricePerNight)</strong>
+                        <span>за ночь</span>
+                    </div>
+                    <span>@room.Capacity мест</span>
+                    <span>@(room.IsAvailable ? "Номер сдаётся" : "Номер сейчас не сдаётся")</span>
+                </div>
+            </aside>
+
+            <div class="stack">
+                <PageIntro Kicker="Карточка номера" Title="@($"№ {room.Number}")" Lead="Сумма на экране считается по числу ночей и подтверждается вместе с бронью." />
+
+                <AuthorizeView Roles="Admin">
+                    <Authorized>
+                        <div class="row-actions">
+                            <a class="ghost" href="@($"/rooms/{room.Id}/edit")">Изменить</a>
+                            @if (confirmDelete)
+                            {
+                                <button class="danger" @onclick="Delete">Да, удалить номер</button>
+                                <button class="quiet" @onclick="() => confirmDelete = false">Оставить</button>
+                            }
+                            else
+                            {
+                                <button class="quiet" @onclick="() => confirmDelete = true">Удалить</button>
+                            }
+                        </div>
+                    </Authorized>
+                </AuthorizeView>
+
+                <AuthorizeView Context="user">
+                    <Authorized>
+                        <EditForm Model="draft" OnSubmit="Book" class="form-card" novalidate>
+                            <DataAnnotationsValidator />
+                            <h2>Забронировать</h2>
+                            <p class="muted">Укажите заезд и выезд. Номер держится на эти даты после подтверждения.</p>
+
+                            @if (Session.IsAdmin)
+                            {
+                                <label class="field">
+                                    <span>Гость</span>
+                                    <select @bind="guestPick" @bind:after="ClearGuestError" class="@(guestError is null ? null : "invalid")">
+                                        <option value="">Выберите гостя</option>
+                                        @foreach (var guest in guests)
+                                        {
+                                            <option value="@guest.Id">@guest.FullName</option>
+                                        }
+                                    </select>
+                                    @if (guestError is not null)
+                                    {
+                                        <span class="validation-message">@guestError</span>
+                                    }
+                                </label>
+                            }
+
+                            <div class="pair">
+                                <label class="field">
+                                    <span>Заезд</span>
+                                    <InputDate @bind-Value="draft.CheckIn" ParsingErrorMessage="Укажите дату заезда." />
+                                    <ValidationMessage For="() => draft.CheckIn" />
+                                </label>
+                                <label class="field">
+                                    <span>Выезд</span>
+                                    <InputDate @bind-Value="draft.CheckOut" ParsingErrorMessage="Укажите дату выезда." />
+                                    <ValidationMessage For="() => draft.CheckOut" />
+                                </label>
+                            </div>
+
+                            <div class="quote">
+                                <span>@HotelText.Nights(HotelText.CountNights(draft.CheckIn, draft.CheckOut))</span>
+                                <strong>@HotelText.Money(HotelText.Quote(room.PricePerNight, draft.CheckIn, draft.CheckOut))</strong>
+                            </div>
+
+                            @if (formError is not null)
+                            {
+                                <p class="alert" role="alert">@formError</p>
+                            }
+
+                            <button class="solid" type="submit" disabled="@busy">Подтвердить бронь</button>
+                        </EditForm>
+                    </Authorized>
+                    <NotAuthorized>
+                        <div class="panel">
+                            <h3>Чтобы забронировать, войдите</h3>
+                            <p>Номер можно смотреть без кабинета. Бронь оформляется после входа.</p>
+                            <div class="hero-actions">
+                                <a class="solid" href="@($"/login?returnUrl=/rooms/{room.Id}")">Войти</a>
+                                <a class="ghost" href="/register">Создать учётную запись</a>
+                            </div>
+                        </div>
+                    </NotAuthorized>
+                </AuthorizeView>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    private RoomModel? room;
+    private readonly BookingDraft draft = new();
+    private List<GuestModel> guests = [];
+    private string guestPick = string.Empty;
+    private string? guestError;
+    private string? error;
+    private string? formError;
+    private bool busy;
+    private bool confirmDelete;
+    private int loadedId;
+
+    [Parameter] public int Id { get; set; }
+
+    protected override void OnInitialized() => Session.Changed += OnSession;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedId == Id && room is not null)
+        {
+            await LoadGuests();
+            return;
+        }
+
+        loadedId = Id;
+        error = null;
+        formError = null;
+        try
+        {
+            room = await Api.GetRoomAsync(Id);
+            await LoadGuests();
+        }
+        catch (Exception exception)
+        {
+            room = null;
+            error = exception.Message;
+        }
+    }
+
+    private async void OnSession()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadGuests();
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadGuests()
+    {
+        if (!Session.IsAdmin || guests.Count > 0)
+        {
+            return;
+        }
+
+        guests = await Api.GetGuestsAsync();
+    }
+
+    private void ClearGuestError() => guestError = null;
+
+    private async Task Book(EditContext context)
+    {
+        if (room is null)
+        {
+            return;
+        }
+
+        guestError = null;
+        formError = null;
+        var datesAreValid = context.Validate();
+        if (Session.IsAdmin)
+        {
+            if (!int.TryParse(guestPick, out var guestId))
+            {
+                guestError = "Выберите гостя для этой брони.";
+                return;
+            }
+
+            draft.GuestId = guestId;
+        }
+        else
+        {
+            draft.GuestId = null;
+        }
+
+        if (!datesAreValid)
+        {
+            return;
+        }
+
+        busy = true;
+        formError = null;
+        try
+        {
+            await Api.CreateBookingAsync(room.Id, draft);
+            Messenger.Success("Бронь создана.");
+            Nav.NavigateTo("/bookings");
+        }
+        catch (Exception exception)
+        {
+            formError = exception.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task Delete()
+    {
+        if (room is null)
+        {
+            return;
+        }
+
+        busy = true;
+        try
+        {
+            await Api.DeleteRoomAsync(room.Id);
+            Messenger.Success($"Номер {room.Number} удалён.");
+            Nav.NavigateTo("/rooms");
+        }
+        catch (Exception exception)
+        {
+            formError = exception.Message;
+            confirmDelete = false;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    public void Dispose() => Session.Changed -= OnSession;
+}
