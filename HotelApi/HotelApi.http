@@ -1,0 +1,107 @@
+@base = http://localhost:5080
+
+### Вход администратора. Токен из ответа вставить в Authorize в Swagger.
+POST {{base}}/api/auth/login
+Content-Type: application/json
+
+{
+  "userName": "admin",
+  "password": "Admin123!"
+}
+
+###
+
+### Вход гостя (Иванов).
+POST {{base}}/api/auth/login
+Content-Type: application/json
+
+{
+  "userName": "ivanov",
+  "password": "Guest123!"
+}
+
+###
+
+### Регистрация гостя.
+POST {{base}}/api/auth/register
+Content-Type: application/json
+
+{
+  "userName": "novik",
+  "password": "Guest123!",
+  "fullName": "Новик Анна",
+  "phone": "+375294444444",
+  "email": "novik@mail.by",
+  "passportNumber": "HB1122334"
+}
+
+###
+
+GET {{base}}/api/auth/me
+Authorization: Bearer {{token}}
+
+###
+
+### Номера: фильтр, сортировка по цене, пагинация.
+GET {{base}}/api/rooms?type=Standard&sort=price&page=1&pageSize=10
+
+###
+
+### Свободные номера на даты.
+GET {{base}}/api/rooms?freeFrom=2027-03-01&freeTo=2027-03-05
+
+###
+
+POST {{base}}/api/rooms
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "number": "401",
+  "type": "Deluxe",
+  "pricePerNight": 160,
+  "capacity": 3,
+  "isAvailable": true
+}
+
+###
+
+### Бронирование от имени гостя (guestId берётся из токена).
+POST {{base}}/api/bookings
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "roomId": 2,
+  "checkIn": "2027-03-10",
+  "checkOut": "2027-03-13"
+}
+
+###
+
+### Бронирование администратором для гостя.
+POST {{base}}/api/bookings
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "roomId": 4,
+  "guestId": 3,
+  "checkIn": "2027-03-10",
+  "checkOut": "2027-03-12"
+}
+
+###
+
+GET {{base}}/api/bookings?status=Active&sort=checkIn&page=1&pageSize=10
+Authorization: Bearer {{token}}
+
+###
+
+PUT {{base}}/api/bookings/1/status
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "status": "Cancelled"
+}

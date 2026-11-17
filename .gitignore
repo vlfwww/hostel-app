@@ -10,6 +10,10 @@
 *.db-shm
 *.db-wal
 
+# Secrets must stay out of git (user-secrets / environment)
+appsettings.*.local.json
+secrets.json
+
 # Temp / OS
 **/_*/
 Thumbs.db
