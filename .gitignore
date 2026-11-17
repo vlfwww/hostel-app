@@ -1,0 +1,18 @@
+# Build
+**/bin/
+**/obj/
+**/.vs/
+*.user
+*.suo
+
+# Databases / local runtime
+*.db
+*.db-shm
+*.db-wal
+
+# Temp / OS
+**/_*/
+Thumbs.db
+Desktop.ini
+*.tmp
+*.log
